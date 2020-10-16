@@ -10,15 +10,72 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include "opencv2/features2d.hpp"
+#include <libraw.h>
 #include <iostream>
 
 using namespace cv;
 using namespace cv::xfeatures2d;
 using namespace std;
 
+#define SQR(x) ((x) * (x))
+void gamma_curve(unsigned short *curve, double *gamm, int imax)
+{
 
+    int mode = 2;
+    int i;
+    double g[6], bnd[2] = { 0, 0 }, r;
+
+    g[0] = gamm[0];
+    g[1] = gamm[1];
+    g[2] = g[3] = g[4] = 0;
+    bnd[g[1] >= 1] = 1;
+    if (g[1] && (g[1] - 1) * (g[0] - 1) <= 0)
+    {
+        for (i = 0; i < 48; i++)
+        {
+            g[2] = (bnd[0] + bnd[1]) / 2;
+            if (g[0])
+                bnd[(pow(g[2] / g[1], -g[0]) - 1) / g[0] - 1 / g[2] > -1] = g[2];
+            else
+                bnd[g[2] / exp(1 - 1 / g[2]) < g[1]] = g[2];
+        }
+        g[3] = g[2] / g[1];
+        if (g[0])
+            g[4] = g[2] * (1 / g[0] - 1);
+    }
+    if (g[0])
+        g[5] = 1 / (g[1] * SQR(g[3]) / 2 - g[4] * (1 - g[3]) +
+        (1 - pow(g[3], 1 + g[0])) * (1 + g[4]) / (1 + g[0])) -
+        1;
+    else
+        g[5] = 1 / (g[1] * SQR(g[3]) / 2 + 1 - g[2] - g[3] -
+            g[2] * g[3] * (log(g[3]) - 1)) -
+        1;
+
+    memcpy(gamm, g, sizeof gamm);
+
+    for (i = 0; i < 0x10000; i++)
+    {
+        curve[i] = 0xffff;
+        if ((r = (double)i / imax) < 1)
+            curve[i] =
+            0x10000 *
+            (mode ? (r < g[3] ? r * g[1]
+                : (g[0] ? pow(r, g[0]) * (1 + g[4]) - g[4]
+                    : log(r) * g[2] + 1))
+                : (r < g[2] ? r / g[1]
+                    : (g[0] ? pow((r + g[4]) / (1 + g[4]), 1 / g[0])
+                        : exp((r - 1) / g[2]))));
+    }
+}
+
+int FC(int row, int col, unsigned int filters)
+{
+    return (filters >> (((row << 1 & 14) | (col & 1)) << 1) & 3);
+}
 
 int main(int argc, const char * argv[]) {
+    
     
     string ImageDroitDossierPath = "/Users/davidhuard/Desktop/ImageG/*.png"; // Image Droite à traiter
     string ImageGaucheDossierPath = "/Users/davidhuard/Desktop/ImageD/*.png"; // Image Gauche à traiter
@@ -29,8 +86,7 @@ int main(int argc, const char * argv[]) {
     const string ImageDthresPath = "/Users/davidhuard/Desktop/ImageDthres/"; // Permet de voir l'image transformé et l'encadrement avec le threshold
     const string ImageGDPath = "/Users/davidhuard/Desktop/ImageGD/"; // Permet de voir le résultat final.
   
-    namedWindow( "G", WINDOW_AUTOSIZE );
-    namedWindow( "GD", WINDOW_AUTOSIZE );
+    namedWindow( "Preview", WINDOW_AUTOSIZE );
     
     //Liste des images disponnibles dans les dossiers.
     
@@ -234,6 +290,82 @@ int main(int argc, const char * argv[]) {
         string filename = ImageGDPath + "Image" + to_string(k) + ".png";
         cv::imwrite(filename.c_str(), imgGD);
     }
+    
+    
+    LibRaw RawProcessor;
+    RawProcessor.imgdata.params.output_bps = 16;
+    
+   // libraw_processed_image_t *proc_img = NULL;
+    
+    char av[] = "/Users/davidhuard/Desktop/VanHerick_Lemire_01.cr3";
+   // char outfn[1024] = "./Results/out_manual.tiff";
+    
+    // Read RAW image
+     RawProcessor.open_file(av);
+     RawProcessor.unpack();
+    
+    //Substract black level + scale on 14-bits (not 16-bit because white balance can overflow some values)
+    ushort *raw_image = new ushort[RawProcessor.imgdata.sizes.raw_height * RawProcessor.imgdata.sizes.raw_width];
+
+    unsigned max = 0, min = RawProcessor.imgdata.color.black, scale;
+    for (int j = 0; j < RawProcessor.imgdata.sizes.raw_height * RawProcessor.imgdata.sizes.raw_width; j++) {
+        if (max < RawProcessor.imgdata.rawdata.raw_image[j])
+            max = RawProcessor.imgdata.rawdata.raw_image[j];
+        if (min > RawProcessor.imgdata.rawdata.raw_image[j])
+            min = RawProcessor.imgdata.rawdata.raw_image[j];
+    }
+
+    if (max > 0 && max < 1 << 14)
+    {
+        scale = ((1 << 14) - 1) / (max - min);
+        for (int j = 0; j < RawProcessor.imgdata.sizes.raw_height * RawProcessor.imgdata.sizes.raw_width; j++) {
+            RawProcessor.imgdata.rawdata.raw_image[j] -= min;
+            RawProcessor.imgdata.rawdata.raw_image[j] *= scale;
+        }
+    }
+    
+    //// White balance (with camera presets 3000K)
+    float *WB_mul = { RawProcessor.imgdata.rawdata.color.WBCT_Coeffs[12] };
+
+    int row, col;
+    for (row = 0; row < RawProcessor.imgdata.sizes.height; row++)
+        for (col = 0; col < RawProcessor.imgdata.sizes.width; col++)
+            RawProcessor.imgdata.rawdata.raw_image[(row + RawProcessor.imgdata.sizes.top_margin) * RawProcessor.imgdata.sizes.raw_pitch / 2 + (col + RawProcessor.imgdata.sizes.left_margin)] *= WB_mul[FC(row, col, RawProcessor.imgdata.idata.filters) + 1];
+    
+    // Scale on 16-bit
+    max = 0; min = RawProcessor.imgdata.color.black;
+    for (int j = 0; j < RawProcessor.imgdata.sizes.raw_height * RawProcessor.imgdata.sizes.raw_width; j++) {
+        if (max < RawProcessor.imgdata.rawdata.raw_image[j])
+            max = RawProcessor.imgdata.rawdata.raw_image[j];
+        if (min > RawProcessor.imgdata.rawdata.raw_image[j])
+            min = RawProcessor.imgdata.rawdata.raw_image[j];
+    }
+
+    if (max > 0 && max < 1 << 16)
+    {
+        scale = ((1 << 16) - 1) / (max);
+        for (int j = 0; j < RawProcessor.imgdata.sizes.raw_height * RawProcessor.imgdata.sizes.raw_width; j++) {
+            RawProcessor.imgdata.rawdata.raw_image[j] *= scale;
+        }
+    }
+    
+    // Create OpenCV Mat with bayer raw data
+    Mat mat16uc1_bayer(RawProcessor.imgdata.sizes.raw_height, RawProcessor.imgdata.sizes.raw_width, CV_16UC1, RawProcessor.imgdata.rawdata.raw_image);
+    
+    Mat mat16uc3_rgb(RawProcessor.imgdata.sizes.raw_height, RawProcessor.imgdata.sizes.raw_width, CV_16UC3);
+    demosaicing(mat16uc1_bayer, mat16uc3_rgb, COLOR_BayerRG2RGB, 3);
+    
+    // create gamma correction lut and apply
+                gamma_curve(RawProcessor.imgdata.color.curve, RawProcessor.imgdata.params.gamm, 0xffff);
+                for (int j = 0; j < RawProcessor.imgdata.sizes.raw_height * RawProcessor.imgdata.sizes.raw_width * 3; j++)
+                    ((ushort*)mat16uc3_rgb.data)[j] =
+                    RawProcessor.imgdata.color.curve[((ushort*)mat16uc3_rgb.data)[j]];
+    imwrite("/Users/davidhuard/Desktop/out_manual.tiff", mat16uc3_rgb);
+    imshow("Preview",mat16uc3_rgb);
+    
+    waitKey(0);
+    
+    RawProcessor.recycle();
   
     return 0;
 }
