@@ -77,8 +77,8 @@ int FC(int row, int col, unsigned int filters)
 int main(int argc, const char * argv[]) {
     
     
-    string ImageDroitDossierPath = "/Users/davidhuard/Desktop/ImageG/*.png"; // Image Droite à traiter
-    string ImageGaucheDossierPath = "/Users/davidhuard/Desktop/ImageD/*.png"; // Image Gauche à traiter
+    string ImageDroitDossierPath = "/Users/davidhuard/Desktop/ImageD/*.png"; // Image Droite à traiter
+    string ImageGaucheDossierPath = "/Users/davidhuard/Desktop/ImageG/*.png"; // Image Gauche à traiter
     const float resizeRatio = 0.25; // Dimensionne l'image pour accélérer le processus.
     const float threshSearchRatio = 0.4f; // entre 0 et 1, 0 est très sévère pour le match. C'est le niveau de passage.
     const int thresholdBW = 50; // entre 0 et 255, threshold pour trouver la région d'intérêt (Crop)
@@ -285,83 +285,67 @@ int main(int argc, const char * argv[]) {
             imgDcrop = imgD(roiD).clone() ;
         }
         
-        hconcat(imgDcrop,imgGcrop,imgGD);
+        //Ajutement Brightness
+        
+        Mat imgDHSV;
+        cvtColor(imgDcrop, imgDHSV, cv::COLOR_RGB2HSV_FULL);
+        Mat imgGHSV;
+        cvtColor(imgGcrop, imgGHSV, cv::COLOR_RGB2HSV_FULL);
+        
+        Mat imgOut = imgDcrop.clone();
+        
+        
+        cv::Scalar tempValD = cv::mean( imgDHSV );
+        float myMAtMeanD = tempValD.val[2];
+        cv::Scalar tempValG = cv::mean( imgGHSV );
+        float myMAtMeanG = tempValG.val[2];
+    
+        int diff = myMAtMeanG-myMAtMeanD;
+        cout << "Diff: " << diff <<endl;
+  
+        for( int y = 0; y < imgDHSV.rows; y++ ) {
+                for( int x = 0; x < imgDHSV.cols; x++ ) {
+                    
+                    imgDcrop.at<Vec3b>(y,x)[0] = saturate_cast<uchar>(imgDcrop.at<Vec3b>(y,x)[0] + diff );
+                    imgDcrop.at<Vec3b>(y,x)[1] = saturate_cast<uchar>(imgDcrop.at<Vec3b>(y,x)[1] + diff );
+                    imgDcrop.at<Vec3b>(y,x)[2] = saturate_cast<uchar>(imgDcrop.at<Vec3b>(y,x)[2] + diff );
+                }
+            }
+        
+
+        //SBS image
+        
+        hconcat(imgGcrop,imgDcrop,imgGD);
 
         string filename = ImageGDPath + "Image" + to_string(k) + ".png";
         cv::imwrite(filename.c_str(), imgGD);
+  
     }
     
     
     LibRaw RawProcessor;
     RawProcessor.imgdata.params.output_bps = 16;
     
-   // libraw_processed_image_t *proc_img = NULL;
+    libraw_processed_image_t *proc_img = NULL;
     
     char av[] = "/Users/davidhuard/Desktop/VanHerick_Lemire_01.cr3";
-   // char outfn[1024] = "./Results/out_manual.tiff";
+
     
     // Read RAW image
      RawProcessor.open_file(av);
      RawProcessor.unpack();
-    
-    //Substract black level + scale on 14-bits (not 16-bit because white balance can overflow some values)
-    ushort *raw_image = new ushort[RawProcessor.imgdata.sizes.raw_height * RawProcessor.imgdata.sizes.raw_width];
+    // white balance + color interpolation + colorspace conversion
+    int ret = RawProcessor.dcraw_process();
 
-    unsigned max = 0, min = RawProcessor.imgdata.color.black, scale;
-    for (int j = 0; j < RawProcessor.imgdata.sizes.raw_height * RawProcessor.imgdata.sizes.raw_width; j++) {
-        if (max < RawProcessor.imgdata.rawdata.raw_image[j])
-            max = RawProcessor.imgdata.rawdata.raw_image[j];
-        if (min > RawProcessor.imgdata.rawdata.raw_image[j])
-            min = RawProcessor.imgdata.rawdata.raw_image[j];
-    }
-
-    if (max > 0 && max < 1 << 14)
-    {
-        scale = ((1 << 14) - 1) / (max - min);
-        for (int j = 0; j < RawProcessor.imgdata.sizes.raw_height * RawProcessor.imgdata.sizes.raw_width; j++) {
-            RawProcessor.imgdata.rawdata.raw_image[j] -= min;
-            RawProcessor.imgdata.rawdata.raw_image[j] *= scale;
-        }
-    }
+    // gamma correction + create 3 component Bitmap
+    proc_img = RawProcessor.dcraw_make_mem_image(&ret);
     
-    //// White balance (with camera presets 3000K)
-    float *WB_mul = { RawProcessor.imgdata.rawdata.color.WBCT_Coeffs[12] };
-
-    int row, col;
-    for (row = 0; row < RawProcessor.imgdata.sizes.height; row++)
-        for (col = 0; col < RawProcessor.imgdata.sizes.width; col++)
-            RawProcessor.imgdata.rawdata.raw_image[(row + RawProcessor.imgdata.sizes.top_margin) * RawProcessor.imgdata.sizes.raw_pitch / 2 + (col + RawProcessor.imgdata.sizes.left_margin)] *= WB_mul[FC(row, col, RawProcessor.imgdata.idata.filters) + 1];
+    libraw_processed_image_t* output = RawProcessor.dcraw_make_mem_image(&ret);
     
-    // Scale on 16-bit
-    max = 0; min = RawProcessor.imgdata.color.black;
-    for (int j = 0; j < RawProcessor.imgdata.sizes.raw_height * RawProcessor.imgdata.sizes.raw_width; j++) {
-        if (max < RawProcessor.imgdata.rawdata.raw_image[j])
-            max = RawProcessor.imgdata.rawdata.raw_image[j];
-        if (min > RawProcessor.imgdata.rawdata.raw_image[j])
-            min = RawProcessor.imgdata.rawdata.raw_image[j];
-    }
-
-    if (max > 0 && max < 1 << 16)
-    {
-        scale = ((1 << 16) - 1) / (max);
-        for (int j = 0; j < RawProcessor.imgdata.sizes.raw_height * RawProcessor.imgdata.sizes.raw_width; j++) {
-            RawProcessor.imgdata.rawdata.raw_image[j] *= scale;
-        }
-    }
-    
-    // Create OpenCV Mat with bayer raw data
-    Mat mat16uc1_bayer(RawProcessor.imgdata.sizes.raw_height, RawProcessor.imgdata.sizes.raw_width, CV_16UC1, RawProcessor.imgdata.rawdata.raw_image);
-    
-    Mat mat16uc3_rgb(RawProcessor.imgdata.sizes.raw_height, RawProcessor.imgdata.sizes.raw_width, CV_16UC3);
-    demosaicing(mat16uc1_bayer, mat16uc3_rgb, COLOR_BayerRG2RGB, 3);
-    
-    // create gamma correction lut and apply
-                gamma_curve(RawProcessor.imgdata.color.curve, RawProcessor.imgdata.params.gamm, 0xffff);
-                for (int j = 0; j < RawProcessor.imgdata.sizes.raw_height * RawProcessor.imgdata.sizes.raw_width * 3; j++)
-                    ((ushort*)mat16uc3_rgb.data)[j] =
-                    RawProcessor.imgdata.color.curve[((ushort*)mat16uc3_rgb.data)[j]];
-    imwrite("/Users/davidhuard/Desktop/out_manual.tiff", mat16uc3_rgb);
+    Mat mat16uc3_rgb(RawProcessor.imgdata.sizes.raw_height, RawProcessor.imgdata.sizes.raw_width, CV_16UC1, output->data);
+    //imwrite("/Users/davidhuard/Desktop/out_manual.tiff", proc_img);
     imshow("Preview",mat16uc3_rgb);
+    
     
     waitKey(0);
     
