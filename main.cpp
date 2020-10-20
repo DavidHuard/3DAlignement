@@ -322,7 +322,7 @@ int main(int argc, const char * argv[]) {
   
     }
     
-    
+    /*
     LibRaw RawProcessor;
     RawProcessor.imgdata.params.output_bps = 16;
     
@@ -345,11 +345,14 @@ int main(int argc, const char * argv[]) {
     Mat mat16uc3_rgb(RawProcessor.imgdata.sizes.raw_height, RawProcessor.imgdata.sizes.raw_width, CV_16UC1, output->data);
     //imwrite("/Users/davidhuard/Desktop/out_manual.tiff", proc_img);
     imshow("Preview",mat16uc3_rgb);
+     RawProcessor.recycle();
+     */
     
     
+    //imshow("Preview",RGBImage);
     waitKey(0);
     
-    RawProcessor.recycle();
+  
   
     return 0;
 }
