@@ -11,12 +11,13 @@
 #include <opencv2/imgproc.hpp>
 #include "opencv2/features2d.hpp"
 #include <libraw.h>
+#include <string.h>
 #include <iostream>
 
 using namespace cv;
 using namespace cv::xfeatures2d;
 using namespace std;
-
+/*
 #define SQR(x) ((x) * (x))
 void gamma_curve(unsigned short *curve, double *gamm, int imax)
 {
@@ -73,22 +74,48 @@ int FC(int row, int col, unsigned int filters)
 {
     return (filters >> (((row << 1 & 14) | (col & 1)) << 1) & 3);
 }
-
+*/
 int main(int argc, const char * argv[]) {
     
     
-    string ImageDroitDossierPath = "/Users/davidhuard/Desktop/ImageD/*.png"; // Image Droite à traiter
-    string ImageGaucheDossierPath = "/Users/davidhuard/Desktop/ImageG/*.png"; // Image Gauche à traiter
-    const float resizeRatio = 0.25; // Dimensionne l'image pour accélérer le processus.
-    const float threshSearchRatio = 0.4f; // entre 0 et 1, 0 est très sévère pour le match. C'est le niveau de passage.
+    string ImageDroitDossierPath = "/Users/davidhuard/Desktop/test2/ImageD/*.png"; // Image Droite à traiter
+    string ImageGaucheDossierPath = "/Users/davidhuard/Desktop/test2/ImageG/*.png"; // Image Gauche à traiter
+    string ImageDroitDossierPathHeic = "/Users/davidhuard/Desktop/test2/ImageD/*.heic"; // Image Droite à traiter
+    string ImageGaucheDossierPathHeic = "/Users/davidhuard/Desktop/test2/ImageG/*.heic"; // Image Gauche à traiter
+    const float resizeRatio = 0.10;//0.25 // Dimensionne l'image pour accélérer le processus.
+    const float threshSearchRatio = 0.3f; // entre 0 et 1, 0 est très sévère pour le match. C'est le niveau de passage.
     const int thresholdBW = 50; // entre 0 et 255, threshold pour trouver la région d'intérêt (Crop)
-    const string ImageGDMatchPath = "/Users/davidhuard/Desktop/ImageGDMatch/"; // Permet de voir l'image avec les matchs, l'image avec le plus de matchs déterminera les ajustements.
-    const string ImageDthresPath = "/Users/davidhuard/Desktop/ImageDthres/"; // Permet de voir l'image transformé et l'encadrement avec le threshold
-    const string ImageGDPath = "/Users/davidhuard/Desktop/ImageGD/"; // Permet de voir le résultat final.
+    const string ImageGDMatchPath = "/Users/davidhuard/Desktop/test2/ImageGDMatch/"; // Permet de voir l'image avec les matchs, l'image avec le plus de matchs déterminera les ajustements.
+    const string ImageDthresPath = "/Users/davidhuard/Desktop/test2/ImageDthres/"; // Permet de voir l'image transformé et l'encadrement avec le threshold
+    const string ImageGDPath = "/Users/davidhuard/Desktop/test2/ImageGD/"; // Permet de voir le résultat final.
   
     namedWindow( "Preview", WINDOW_AUTOSIZE );
     
     //Liste des images disponnibles dans les dossiers.
+    
+    cv::String pathGHeic(ImageGaucheDossierPathHeic);
+    cv::String pathDHeic(ImageDroitDossierPathHeic);
+    
+    vector<cv::String> fnGHeic;
+    vector<cv::String> fnDHeic;
+
+    cv::glob(pathGHeic,fnGHeic,true);
+    cv::glob(pathDHeic,fnDHeic,true);
+    
+    for(size_t k=0; k<fnDHeic.size(); ++k)
+    {
+    string outnameD = fnDHeic[k].substr(0, fnDHeic[k].length() - 4) + "png";
+    string commandD = "/usr/local/Cellar/vips/8.10.2_1/bin/vips copy " + fnDHeic[k] + " " + outnameD;
+    cout << "in: " << fnDHeic[k]<< endl << "out: " << outnameD <<endl;
+    system(commandD.c_str());
+    }
+    for(size_t k=0; k<fnGHeic.size(); ++k)
+    {
+    string outnameG = fnGHeic[k].substr(0, fnGHeic[k].length() - 4) + "png";
+    string commandG = "/usr/local/Cellar/vips/8.10.2_1/bin/vips copy " + fnGHeic[k] + " " + outnameG;
+    cout << "in: " << fnGHeic[k]<< endl << "out: " << outnameG <<endl;
+    system(commandG.c_str());
+    }
     
     cv::String pathG(ImageGaucheDossierPath);
     cv::String pathD(ImageDroitDossierPath);
@@ -114,8 +141,8 @@ int main(int argc, const char * argv[]) {
     int NbMaxMatch = 0;
     float yAjustement = 0;
     float xAjustement = 0;
-    Point rectCut = Point(0,0);
-    
+    Rect RectCut = Rect(0,0,0,0);
+    int maxHeight =0;
     
     for (size_t k=0; k<fnD.size(); ++k)
     {
@@ -154,7 +181,7 @@ int main(int argc, const char * argv[]) {
         std::vector<cv::KeyPoint> keypointsD;
         siftPtrD->cv::SIFT::detect(imgD, keypointsD);
         
-        int minHessian = 100;//400
+        int minHessian = 400;//100
         Ptr<SURF> detector = SURF::create( minHessian );
         std::vector<KeyPoint> keypoints1, keypoints2;
         Mat descriptors1, descriptors2;
@@ -207,8 +234,13 @@ int main(int argc, const char * argv[]) {
         cout << "X: " << rect.x << " Y: " << rect.y << " W: " << rect.width << " H: " << rect.height << endl;
         rectangle(imgD_thres, rect, Scalar(255,255,255), 10,8,0 );
         cv::imwrite(filenameThres.c_str(), imgD_thres);
-        rectCut = rectCut+ Point(rect.y, rect.y+rect.height);
         
+        cout << "perimeter : " << arcLength(contours[t],false) << endl;
+        if(int(rect.height)>maxHeight)
+        {
+            maxHeight = int(rect.height);
+            RectCut = Rect(rect.x, rect.y, rect.x+rect.width, rect.y+rect.height);
+        }
         //Analyse du match.
         
         if(good_matches.size()>NbMaxMatch)
@@ -232,9 +264,13 @@ int main(int argc, const char * argv[]) {
         }
 
     }
-    rectCut.x = int(rectCut.x/fnD.size())*(1/resizeRatio);
-    rectCut.y = int(rectCut.y/fnD.size())*(1/resizeRatio);
-    cout << "Coupure haute Y : " << rectCut.x << " - Coupure basse Y : " << rectCut.y << endl;
+    
+    RectCut.y = int(RectCut.y)*(1/resizeRatio);
+    RectCut.x = int(RectCut.x)*(1/resizeRatio);
+    RectCut.height = int(RectCut.height)*(1/resizeRatio);
+    RectCut.width = int(RectCut.width)*(1/resizeRatio);
+    
+    cout << "Coupure haute Y : " << RectCut.y << " - Coupure basse Y : " << RectCut.height << endl;
     cout << "Match : " << NbMaxMatch  << endl;
     cout << "Ajutement Y: " << yAjustement  << endl;
     cout << "Ajutement X: " << xAjustement  << endl;
@@ -251,15 +287,29 @@ int main(int argc, const char * argv[]) {
         
         Mat imgDcrop = imgD.clone();
         Mat imgGcrop = imgG.clone();
-        
+        /*
         if(xAjustement<0 && yAjustement<0)
         {
             Rect roiD = Rect(0,rectCut.x, imgD.cols+xAjustement, imgD.rows+yAjustement-rectCut.x-(imgG.rows-rectCut.y));
             imgDcrop = imgD(roiD).clone() ;
             
-            Rect roiG = Rect(-xAjustement,-yAjustement+rectCut.x, imgG.cols+xAjustement, imgG.rows+yAjustement-rectCut.x-(imgG.rows-rectCut.y));
+            Rect roiG = Rect(-xAjustement,
+         -yAjustement+rectCut.x,
+         imgG.cols+xAjustement,
+         imgG.rows+yAjustement-rectCut.x-(imgG.rows-rectCut.y));
+            imgGcrop = imgG(roiG).clone() ;
+        }*/
+        
+        if(xAjustement<0 && yAjustement<0)
+        {
+            Rect roiD = Rect(RectCut.x,RectCut.y, imgD.cols+xAjustement-RectCut.x-(imgD.cols-RectCut.width), imgD.rows+yAjustement-RectCut.y-(imgD.rows-RectCut.height));
+            imgDcrop = imgD(roiD).clone() ;
+            
+            Rect roiG = Rect(-xAjustement+RectCut.x,-yAjustement+RectCut.y, imgG.cols+xAjustement-RectCut.x-(imgG.cols-RectCut.width), imgG.rows+yAjustement-RectCut.y-(imgG.rows-RectCut.height));
             imgGcrop = imgG(roiG).clone() ;
         }
+        
+        /*
         else if(xAjustement>0 && yAjustement>0)
         {
             Rect roiG = Rect(0,rectCut.x, imgG.cols-xAjustement, imgG.rows-yAjustement-rectCut.x-(imgG.rows-rectCut.y));
@@ -267,22 +317,48 @@ int main(int argc, const char * argv[]) {
             
             Rect roiD = Rect(xAjustement,yAjustement+rectCut.x, imgD.cols-xAjustement, imgD.rows-yAjustement-rectCut.x-(imgG.rows-rectCut.y));
             imgDcrop = imgD(roiD).clone() ;
+        }*/
+        else if(xAjustement>0 && yAjustement>0)
+        {
+            Rect roiG = Rect(RectCut.x,RectCut.y, imgG.cols-xAjustement-RectCut.x-(imgG.cols-RectCut.width), imgG.rows-yAjustement-RectCut.y-(imgG.rows-RectCut.height));
+            imgGcrop = imgG(roiG).clone() ;
+            
+            Rect roiD = Rect(xAjustement+RectCut.x,yAjustement+RectCut.y, imgD.cols-xAjustement-RectCut.x-(imgG.cols-RectCut.width), imgD.rows-yAjustement-RectCut.y-(imgG.rows-RectCut.height));
+            imgDcrop = imgD(roiD).clone() ;
         }
-         else if(xAjustement>0 && yAjustement<0)
+         /*else if(xAjustement>0 && yAjustement<0)
         {
             Rect roiG = Rect(0,rectCut.x, imgG.cols-xAjustement, imgD.rows+yAjustement-rectCut.x-(imgG.rows-rectCut.y));
             imgGcrop = imgG(roiG).clone() ;
             
             Rect roiD = Rect(xAjustement,-yAjustement+rectCut.x, imgD.cols-xAjustement, imgG.rows+yAjustement-rectCut.x-(imgG.rows-rectCut.y));
             imgDcrop = imgD(roiD).clone() ;
-        }
-        else if(xAjustement<0 && yAjustement>0)
+        }*/
+         else if(xAjustement>0 && yAjustement<0)
         {
-            Rect roiG = Rect(0,rectCut.x, imgG.cols+xAjustement, imgG.rows-yAjustement-rectCut.x-(imgG.rows-rectCut.y));
+            
+            Rect roiG = Rect(RectCut.x,RectCut.y, imgG.cols-xAjustement-RectCut.x-(imgG.cols-RectCut.width), imgG.rows+yAjustement-RectCut.y-(imgG.rows-RectCut.height));
             imgGcrop = imgG(roiG).clone() ;
             
-            Rect roiD = Rect(-xAjustement,yAjustement+rectCut.x, imgD.cols+xAjustement, imgD.rows-yAjustement-rectCut.x-(imgG.rows-rectCut.y));
+            Rect roiD = Rect(xAjustement+RectCut.x,-yAjustement+RectCut.y, imgD.cols-xAjustement-RectCut.x-(imgG.cols-RectCut.width), imgD.rows+yAjustement-RectCut.y-(imgG.rows-RectCut.height));
             imgDcrop = imgD(roiD).clone() ;
+        }/*
+         else if(xAjustement<0 && yAjustement>0)
+         {
+             Rect roiG = Rect(0,rectCut.x, imgG.cols+xAjustement, imgG.rows-yAjustement-rectCut.x-(imgG.rows-rectCut.y));
+             imgGcrop = imgG(roiG).clone() ;
+             
+             Rect roiD = Rect(-xAjustement,yAjustement+rectCut.x, imgD.cols+xAjustement, imgD.rows-yAjustement-rectCut.x-(imgG.rows-rectCut.y));
+             imgDcrop = imgD(roiD).clone() ;
+         }*/
+        else if(xAjustement<0 && yAjustement>0)
+        {
+            Rect roiD = Rect(RectCut.x,RectCut.y, imgD.cols+xAjustement-RectCut.x-(imgD.cols-RectCut.width), imgD.rows-yAjustement-RectCut.y-(imgD.rows-RectCut.height));
+            imgDcrop = imgD(roiD).clone() ;
+            
+            Rect roiG = Rect(-xAjustement+RectCut.x,yAjustement+RectCut.y, imgG.cols+xAjustement-RectCut.x-(imgG.cols-RectCut.width), imgG.rows-yAjustement-RectCut.y-(imgG.rows-RectCut.height));
+            imgGcrop = imgG(roiG).clone() ;
+            
         }
         
         //Ajutement Brightness
@@ -350,7 +426,10 @@ int main(int argc, const char * argv[]) {
     
     
     //imshow("Preview",RGBImage);
-    waitKey(0);
+    
+    
+    
+   // waitKey(0);
     
   
   
