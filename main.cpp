@@ -14,6 +14,7 @@
 #include <string.h>
 #include <iostream>
 
+
 using namespace cv;
 using namespace cv::xfeatures2d;
 using namespace std;
@@ -78,16 +79,16 @@ int FC(int row, int col, unsigned int filters)
 int main(int argc, const char * argv[]) {
     
     
-    string ImageDroitDossierPath = "/Users/davidhuard/Desktop/test2/ImageD/*.png"; // Image Droite à traiter
-    string ImageGaucheDossierPath = "/Users/davidhuard/Desktop/test2/ImageG/*.png"; // Image Gauche à traiter
-    string ImageDroitDossierPathHeic = "/Users/davidhuard/Desktop/test2/ImageD/*.heic"; // Image Droite à traiter
-    string ImageGaucheDossierPathHeic = "/Users/davidhuard/Desktop/test2/ImageG/*.heic"; // Image Gauche à traiter
+    string ImageDroitDossierPath = "/Users/davidhuard/Desktop/ImageD/*.png"; // Image Droite à traiter
+    string ImageGaucheDossierPath = "/Users/davidhuard/Desktop/ImageG/*.png"; // Image Gauche à traiter
+    string ImageDroitDossierPathHeic = "/Users/davidhuard/Desktop/ImageD/*.HEIC"; // Image Droite à traiter
+    string ImageGaucheDossierPathHeic = "/Users/davidhuard/Desktop/ImageG/*.HEIC"; // Image Gauche à traiter
     const float resizeRatio = 0.10;//0.25 // Dimensionne l'image pour accélérer le processus.
     const float threshSearchRatio = 0.3f; // entre 0 et 1, 0 est très sévère pour le match. C'est le niveau de passage.
     const int thresholdBW = 50; // entre 0 et 255, threshold pour trouver la région d'intérêt (Crop)
-    const string ImageGDMatchPath = "/Users/davidhuard/Desktop/test2/ImageGDMatch/"; // Permet de voir l'image avec les matchs, l'image avec le plus de matchs déterminera les ajustements.
-    const string ImageDthresPath = "/Users/davidhuard/Desktop/test2/ImageDthres/"; // Permet de voir l'image transformé et l'encadrement avec le threshold
-    const string ImageGDPath = "/Users/davidhuard/Desktop/test2/ImageGD/"; // Permet de voir le résultat final.
+    const string ImageGDMatchPath = "/Users/davidhuard/Desktop/ImageGDMatch/"; // Permet de voir l'image avec les matchs, l'image avec le plus de matchs déterminera les ajustements.
+    const string ImageDthresPath = "/Users/davidhuard/Desktop/ImageDthres/"; // Permet de voir l'image transformé et l'encadrement avec le threshold
+    const string ImageGDPath = "/Users/davidhuard/Desktop/ImageGD/"; // Permet de voir le résultat final.
   
     namedWindow( "Preview", WINDOW_AUTOSIZE );
     
@@ -98,7 +99,9 @@ int main(int argc, const char * argv[]) {
     
     vector<cv::String> fnGHeic;
     vector<cv::String> fnDHeic;
-
+    
+    cout << fnGHeic.size() << endl;
+    
     cv::glob(pathGHeic,fnGHeic,true);
     cv::glob(pathDHeic,fnDHeic,true);
     
@@ -106,7 +109,7 @@ int main(int argc, const char * argv[]) {
     {
     string outnameD = fnDHeic[k].substr(0, fnDHeic[k].length() - 4) + "png";
     string commandD = "/usr/local/Cellar/vips/8.10.2_1/bin/vips copy " + fnDHeic[k] + " " + outnameD;
-    cout << "in: " << fnDHeic[k]<< endl << "out: " << outnameD <<endl;
+    cout << "in: " << fnDHeic[k] << endl << "out: " << outnameD <<endl;
     system(commandD.c_str());
     }
     for(size_t k=0; k<fnGHeic.size(); ++k)
@@ -209,7 +212,7 @@ int main(int argc, const char * argv[]) {
         string filename = ImageGDMatchPath + "Image" + to_string(k) + ".png";
         cv::imwrite(filename.c_str(), img_matches);
         
-        //"Crop"de l'image, aquisition des paramètre.
+        //"Crop"de l'image, aquisition des paramètres.
         
         Mat imgD_thres;
         Mat imgD_gray;
@@ -241,6 +244,7 @@ int main(int argc, const char * argv[]) {
             maxHeight = int(rect.height);
             RectCut = Rect(rect.x, rect.y, rect.x+rect.width, rect.y+rect.height);
         }
+        
         //Analyse du match.
         
         if(good_matches.size()>NbMaxMatch)
